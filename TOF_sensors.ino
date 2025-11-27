@@ -1,159 +1,72 @@
-/* This is an old PicoLowLevel test code, used only to verify that the Makefile works correctly.
-Do not upload it to the Pico — it may contain errors or modified sections.
-Use it exclusively for Makefile testing. */
+/*
+This example shows how to set up and read multiple VL53L1X sensors connected to
+the same I2C bus. Each sensor needs to have its XSHUT pin connected to a
+different Arduino pin, and you should change sensorCount and the xshutPins array
+below to match your setup.
 
-#include <Arduino.h>
-#include <Wire.h>
-/* #include <SPI.h>
-#include "mcp2515.h"
-#include "CanWrapper.h"
-
-#include "include/definitions.h"
-#include "include/mod_config.h"
-#include "include/communication.h"
+For more information, see ST's application note AN4846 ("Using multiple VL53L0X
+in a single design"). The principles described there apply to the VL53L1X as
+well.
 */
-//#include "Adafruit_VL53L1X.h"
+
+#include <Wire.h>
 #include "VL53L1X.h"
 
-/*
-#define IRQ_PIN 2
-#define XSHUT_PIN 3
+// The number of sensors in your system.
+const uint8_t sensorCount = 2;
 
+// The Arduino pin connected to the XSHUT pin of each sensor.
+const uint8_t xshutPins[sensorCount] = { 0, 1 };
 
+VL53L1X sensors[sensorCount];
 
-Adafruit_VL53L1X vl53 = Adafruit_VL53L1X(XSHUT_PIN, IRQ_PIN);
-*/
-#define ROI_SIZE 2
-#define MATRIX_SIZE 8
+void setup()
+{
+  while (!Serial) {}
+  Serial.begin(115200);
+  Wire.begin();
+  Wire.setClock(400000); // use 400 kHz I2C
 
-// For the definition of the center of ROI we find the SPAD configuration on both the pololu library and the ST user manual.
-// Having defined a ROI size of 4, the center falls in between the 4 SPADs. The manual tells to choose as a center the upper-right position!
-/*
-void calculate_ROI_centers(){
-    const int8_t ROI_SIZE = 2;
-    const int8_t MATRIX_SIZE = 16/ROI_SIZE;
-
-    int8_t centers_matrix[MATRIX_SIZE][MATRIX_SIZE]
-
-    int a = (ROI_SIZE-1) / 2;
-    int spad_index = a + 8*(a)
-
-    for (i=1; i<= MATRIX_SIZE; i++){
-        for (j=1; j < MATRIX_SIZE, j++){
-            centers_matrix[i][j] = spad_index;
-
-            a = a + ROI_SIZE
-            spad_index = spad_index + 8*(ROI_SIZE)
-        }
-    }
-    
-
-    
-}
-*/
-
-// Matrice 8x8 per i centri (deve essere globale)
-int centers_matrix[MATRIX_SIZE][MATRIX_SIZE]; 
-
-// Dichiarazione dell'oggetto sensore usando la classe Pololu
-VL53L1X sensor; 
-
-void setup(){
-    Serial.begin(115200);
-    while (!Serial) delay(10);
-
-    Serial.println(F("Starting TOF Configuration:"));
-
-    Wire.begin();
-    
-    Wire.setClock(400000); // use 400 kHz I2C
-
-  sensor.setTimeout(5000);
-
-  delay(10);
-
-  if (!sensor.init())
+  // Disable/reset all sensors by driving their XSHUT pins low.
+  for (uint8_t i = 0; i < sensorCount; i++)
   {
-    Serial.println("Failed to detect and initialize sensor!");
-    while (1);
+    pinMode(xshutPins[i], OUTPUT);
+    digitalWrite(xshutPins[i], LOW);
   }
 
-  // Use long distance mode and allow up to 50000 us (50 ms) for a measurement.
-  // You can change these settings to adjust the performance of the sensor, but
-  // the minimum timing budget is 20 ms for short distance mode and 33 ms for
-  // medium and long distance modes. See the VL53L1X datasheet for more
-  // information on range and timing limits.
-  sensor.setDistanceMode(VL53L1X::Long);
-  sensor.setMeasurementTimingBudget(50000);
+  // Enable, initialize, and start each sensor, one by one.
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    // Stop driving this sensor's XSHUT low. This should allow the carrier
+    // board to pull it high. (We do NOT want to drive XSHUT high since it is
+    // not level shifted.) Then wait a bit for the sensor to start up.
+    pinMode(xshutPins[i], INPUT);
+    delay(10);
 
-  // Start continuous readings at a rate of one measurement every 50 ms (the
-  // inter-measurement period). This period should be at least as long as the
-  // timing budget.
-  sensor.startContinuous(60);
-
-    // Imposta la dimensione della ROI usando la funzione Pololu/ST
-    // Se ROI_SIZE = 2, stiamo impostando un blocco 2x2 SPAD.
-    //sensor.setROISize(ROI_SIZE, ROI_SIZE);
-
-  // Setting ROI size of 4x4 for a 8x8 output matrix
-
-  // calcolo dei centri di ROI
-
-
-    // code to find the matrix for the centers of the SPAD. Hard to understand but it works!
-    
-
-    int b;
-    int c;
-    int a = 1;
-    int spad_index = 1;
-    
-
-    for (int i=0; i< MATRIX_SIZE; i++){
-        for (int j=0; j < MATRIX_SIZE; j++){
-            centers_matrix[i][j] = spad_index;
-
-            a = a + ROI_SIZE;
-            b = 0;
-            c = 0;
-            if (j==3)
-            {
-                b = 8;
-                
-            }
-            if (j==7){
-                b = 8;             
-            }
-            if (i==3 && j ==7){
-                c = 7;
-            }
-            spad_index = spad_index + (ROI_SIZE) + b + c;
-        }
-
+    sensors[i].setTimeout(500);
+    if (!sensors[i].init())
+    {
+      Serial.print("Failed to detect and initialize sensor ");
+      Serial.println(i);
+      while (1);
     }
-    
-    // Ciclo esterno: scorre le RIGHE (indice 'r')
-    for (int r = 0; r < 8; r++) {
-        
-        // Ciclo interno: scorre le COLONNE (indice 'c')
-        for (int c = 0; c < 8; c++) {
-            
-            // Stampa il valore dell'elemento corrente A[r][c]
-            Serial.print(centers_matrix[r][c]);
-            
-            // Aggiunge una tabulazione per spaziatura orizzontale
-            Serial.print('\t'); 
-        }
-        Serial.println();
 
-    
+    // Each sensor must have its address changed to a unique value other than
+    // the default of 0x29 (except for the last one, which could be left at
+    // the default). To make it simple, we'll just count up from 0x2A.
+    sensors[i].setAddress(0x2A + i);
 
-    }
+    sensors[i].startContinuous(50);
+  }
 }
 
-void loop(){
-    Serial.print(sensor.read());
-  if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
-
+void loop()
+{
+  for (uint8_t i = 0; i < sensorCount; i++)
+  {
+    Serial.print(sensors[i].read());
+    if (sensors[i].timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+    Serial.print('\t');
+  }
   Serial.println();
 }
