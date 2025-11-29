@@ -1,6 +1,6 @@
-/* This is an old PicoLowLevel test code, used only to verify that the Makefile works correctly.
-Do not upload it to the Pico — it may contain errors or modified sections.
-Use it exclusively for Makefile testing. */
+
+/* This is the code for the RP2040-Zero used as master to TOF VL53L1X sensors by ST Microelectronics via I2C0.
+   The zero is then connected to a Raspberry Pico via I2C1 as a slave sending the data collected by the TOFs. */
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -15,37 +15,20 @@ Use it exclusively for Makefile testing. */
 //#include "Adafruit_VL53L1X.h"
 #include "VL53L1X.h"
 
-/*
-#define IRQ_PIN 2
-#define XSHUT_PIN 3
+// PINs for I2C1 communication with the Pico
+#define SCL_PIN_PICO 3
+#define SDA_PIN_PICO 2
 
-
-
-Adafruit_VL53L1X vl53 = Adafruit_VL53L1X(XSHUT_PIN, IRQ_PIN);
-*/
 #define ROI_SIZE 4
 #define MATRIX_SIZE 4
 
+#define SENSOR_BAUDRATE 400000
+
+#define BUS_BAUDRATE 100000
+
 // For the definition of the center of ROI we find the SPAD configuration on both the pololu library and the ST user manual.
 // Having defined a ROI size of 4, the center falls in between the 4 SPADs. The manual tells to choose as a center the upper-right position!
-/*
-void calculate_ROI_centers(){
-    const int8_t ROI_SIZE = 2;
-    const int8_t MATRIX_SIZE = 16/ROI_SIZE;
 
-    int8_t centers_matrix[MATRIX_SIZE][MATRIX_SIZE]
-
-    int a = (ROI_SIZE-1) / 2;
-    int spad_index = a + 8*(a)
-
-    for (i=1; i<= MATRIX_SIZE; i++){
-        for (j=1; j < MATRIX_SIZE, j++){
-            centers_matrix[i][j] = spad_index;
-
-            a = a + ROI_SIZE
-            spad_index = spad_index + 8*(ROI_SIZE)
-        }
-    }
     
 /* Table of SPAD locations. Each SPAD has a number which is not obvious.
 * Pin 1 *
@@ -80,23 +63,50 @@ int centers_matrix[MATRIX_SIZE][MATRIX_SIZE] = {
 // Matrice 4x1
 int centers_matrix[MATRIX_SIZE] = {193, 197, 62, 58};
 
+int distance_matrix[MATRIX_SIZE];
+
+const int SLAVE_ADDRESS = 0x42;
+
+const size_t BYTES_TO_SEND = sizeof(distance_matrix);
+
 // Matrice 8x8 per i centri (deve essere globale)
 //int centers_matrix[MATRIX_SIZE][MATRIX_SIZE]; 
 
 // The number of sensors in your system.
-const uint8_t sensorCount = 2;
+const uint8_t sensorCount = 1;
 
 // The Arduino pin connected to the XSHUT pin of each sensor.
-const uint8_t xshutPins[sensorCount] = { 0, 1 };
+const uint8_t xshutPins[sensorCount] = { 7 };
+
+// Inizializzo comunicazione su Bus 12c1
+//TwoWire pico2zero_Bus(i2c1, SDA_PIN_PICO, SCL_PIN_PICO);
 
 VL53L1X sensors[sensorCount];
 
-void setup(){
-    while (!Serial) {}
-  Serial.begin(115200);
-  Wire.begin();
-  Wire.setClock(400000); // use 400 kHz I2C
+void requestEvent() {
+    //pico2zero_Bus.write((const byte*)centers_matrix, BYTES_TO_SEND);
+    Serial.println("Master chiama: ");
+    Wire1.write((const byte*)distance_matrix, BYTES_TO_SEND);
+}
 
+void setup(){
+  //while (!Serial) {}
+  Serial.begin(115200);
+  Wire.setSDA(4);  // GP4
+  Wire.setSCL(5);  // GP5
+  Wire.begin(); // Comunicazione I2C0 per i TOF
+  Wire.setClock(SENSOR_BAUDRATE); // use 400 kHz I2C
+  Serial.println("Master Bus Started");
+  //pinMode(SDA_PIN_PICO, INPUT_PULLUP);
+  //pinMode(SCL_PIN_PICO, INPUT_PULLUP);
+
+  Wire1.setSDA(2);  // GP4
+  Wire1.setSCL(3);  // GP5
+  Wire1.begin(SLAVE_ADDRESS); // COmunicazione I2C1 per il pico
+  Wire1.setClock(BUS_BAUDRATE);
+  Wire1.onRequest(requestEvent);
+
+  Serial.println("Slave Bus started");
   // Disable/reset all sensors by driving their XSHUT pins low.
   for (uint8_t i = 0; i < sensorCount; i++)
   {
@@ -111,6 +121,7 @@ void setup(){
     // board to pull it high. (We do NOT want to drive XSHUT high since it is
     // not level shifted.) Then wait a bit for the sensor to start up.
     pinMode(xshutPins[i], INPUT);
+
     delay(10);
 
     sensors[i].setTimeout(500);
@@ -120,6 +131,8 @@ void setup(){
       Serial.println(i);
       while (1);
     }
+    Serial.print("Initialized sensor ");
+    Serial.println(i);
 
     // Each sensor must have its address changed to a unique value other than
     // the default of 0x29 (except for the last one, which could be left at
@@ -152,6 +165,7 @@ void setup(){
 
 void loop(){
    // Serial.print(sensor.read());
+  
    for (int i=0; i<sensorCount; i++){
         Serial.print("Distance Matrix: ");
         Serial.println(i);
@@ -164,7 +178,10 @@ void loop(){
                     sensors[i].setROICenter(center_spad);
 
                     delay(5);
+
+                    distance_matrix[r] = sensors[i].read();
                     
+                    /*
                     // 2. Legge la distanza (attende automaticamente il risultato)
                     int16_t distance_mm = sensors[i].read(); 
                     
@@ -176,9 +193,10 @@ void loop(){
                     
                     // Opzionale: Aggiungi un piccolo ritardo per non sovraccaricare il bus/serial monitor
                     delay(1); 
+                    */
                 }
                 // Nuova riga alla fine di ogni riga della matrice
-                Serial.println();
+                
             }
             
             // Ritardo tra una scansione completa (64 ROI) e la successiva
@@ -186,7 +204,8 @@ void loop(){
             // impiega circa 64 * 50ms = 3.2 secondi.
             delay(10);
 
-        Serial.println();
+        
+        
 //}
-  
+  delay(50);
 }
