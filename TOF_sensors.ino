@@ -61,9 +61,14 @@ int centers_matrix[MATRIX_SIZE][MATRIX_SIZE] = {
 
 */
 // Matrice 4x1
+
+
+// The number of sensors in your system.
+const uint8_t sensorCount = 2;
+
 int centers_matrix[MATRIX_SIZE] = {193, 197, 62, 58};
 
-int distance_matrix[MATRIX_SIZE];
+int distance_matrix[sensorCount][MATRIX_SIZE];
 
 const int SLAVE_ADDRESS = 0x42;
 
@@ -72,11 +77,8 @@ const size_t BYTES_TO_SEND = sizeof(distance_matrix);
 // Matrice 8x8 per i centri (deve essere globale)
 //int centers_matrix[MATRIX_SIZE][MATRIX_SIZE]; 
 
-// The number of sensors in your system.
-const uint8_t sensorCount = 1;
-
 // The Arduino pin connected to the XSHUT pin of each sensor.
-const uint8_t xshutPins[sensorCount] = { 7 };
+const uint8_t xshutPins[sensorCount] = { 7, 8 };
 
 // Inizializzo comunicazione su Bus 12c1
 //TwoWire pico2zero_Bus(i2c1, SDA_PIN_PICO, SCL_PIN_PICO);
@@ -90,7 +92,7 @@ void requestEvent() {
 }
 
 void setup(){
-  //while (!Serial) {}
+  while (!Serial) {}
   Serial.begin(115200);
   Wire.setSDA(4);  // GP4
   Wire.setSCL(5);  // GP5
@@ -165,7 +167,7 @@ void setup(){
 
 void loop(){
    // Serial.print(sensor.read());
-  
+  /*
    for (int i=0; i<sensorCount; i++){
         Serial.print("Distance Matrix: ");
         Serial.println(i);
@@ -180,32 +182,49 @@ void loop(){
                     delay(5);
 
                     distance_matrix[r] = sensors[i].read();
-                    
-                    /*
-                    // 2. Legge la distanza (attende automaticamente il risultato)
-                    int16_t distance_mm = sensors[i].read(); 
-                    
-                    // 3. Stampa il risultato in formato tabellare (o lo salva)
-                    Serial.print(distance_mm);
-                    
-                    // Aggiunge una tabulazione per spaziatura orizzontale
-                    Serial.print('\t'); 
-                    
-                    // Opzionale: Aggiungi un piccolo ritardo per non sovraccaricare il bus/serial monitor
-                    delay(1); 
-                    */
-                }
-                // Nuova riga alla fine di ogni riga della matrice
+        }
+
                 
             }
             
-            // Ritardo tra una scansione completa (64 ROI) e la successiva
-            // Poiché ogni lettura richiede ~50ms (Timing Budget), l'intera scansione 8x8
-            // impiega circa 64 * 50ms = 3.2 secondi.
             delay(10);
 
-        
+        */
         
 //}
-  delay(50);
+
+  for (int r=0; r < MATRIX_SIZE; r++) {
+
+    for (int i=0; i< sensorCount; i++) {
+
+      int center_spad = centers_matrix[r];
+      sensors[i].setROICenter(center_spad);
+    }
+    delay(30);
+    for (int i=0; i< sensorCount; i++) {
+      distance_matrix[i][r] = sensors[i].read();
+    }
+    delay(2);
+  }
+    
+
+
+  // Ciclo esterno: scorre le RIGHE (indice 'r')
+    for (int r = 0; r < sensorCount; r++) {
+      Serial.print("Lettura sensore:");
+      Serial.print(r);
+      Serial.print('\t');
+        
+        // Ciclo interno: scorre le COLONNE (indice 'c')
+        for (int c = 0; c < MATRIX_SIZE; c++) {
+            
+            // Stampa il valore dell'elemento corrente A[r][c]
+            Serial.print(distance_matrix[r][c]);
+            
+            // Aggiunge una tabulazione per spaziatura orizzontale
+            Serial.print('\t'); 
+        }
+        Serial.println();
+    }
+    delay(5);
 }
