@@ -62,6 +62,10 @@
 #define ROI_SIZE 4
 #define MATRIX_SIZE 4
 
+// Definition of the dimension of the mean matrix used to calculate mean values and filtering data. Higher values mean more stability,
+// but at the cost of speed of detection of a big change in the distances!
+#define MEAN_DIMENSION 5
+
 /*
   Matrix 4x4  -> useful to measure as much area of the SPAD as possible
 
@@ -79,6 +83,13 @@ int centers_matrix[MATRIX_SIZE] = {193, 197, 62, 58};
 // The number of sensors in your system and definition of the distance matrix that will contain the measurments:
 const uint8_t sensorCount = 2;
 int distance_matrix[sensorCount][MATRIX_SIZE];
+
+// Mean matrix for filtering:
+int mean_matrix[sensorCount][MATRIX_SIZE][MEAN_DIMENSION];
+
+// Counters and averages used in the loop for filtering
+int counter = 0;
+int average = 0;
 
 // Definition of bytes to send to Master:
 const size_t BYTES_TO_SEND = sizeof(distance_matrix);
@@ -164,6 +175,10 @@ void loop(){
   // makes the TOF constantly make measures, so we are able to read the latest data from all sensors almost simultaneously, with a delay
   // of few ms!  
   // In total we will be under 100ms for a whole measurment of all sensors!
+  
+  // In this filtered version a filtering mean matrix has been added. Each distance measured with the sensor is then filtered by 
+  // calculating the mean with MEAN_DIMENSION-1 previous readings. 
+
   for (int r=0; r < MATRIX_SIZE; r++) {
     for (int i=0; i< sensorCount; i++) {
       int center_spad = centers_matrix[r];
@@ -171,14 +186,28 @@ void loop(){
     }
     delay(20);
     for (int i=0; i< sensorCount; i++) {
-      distance_matrix[i][r] = sensors[i].read();
+      mean_matrix[i][r][counter] = sensors[i].read();
+      //distance_matrix[i][r] = sensors[i].read();
+      for (int k=0; k< MEAN_DIMENSION; k++){
+        average = average + mean_matrix[i][r][k];
+      }
+      average = average/MEAN_DIMENSION;
+      distance_matrix[i][r] = average;
+      average = 0;
     }
     delay(2); 
   }
     
+  if (counter < MEAN_DIMENSION-1){
+    counter++;
+  }
+  else {
+    counter = 0;
+  }
 
 /*
   // Printing the matrix of measurments just for debugging
+
     for (int r = 0; r < sensorCount; r++) {
       Serial.print("Lettura sensore:");
       Serial.print(r);
